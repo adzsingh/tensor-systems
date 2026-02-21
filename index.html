@@ -1,0 +1,2038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TENSOR | Deterministic Control</title>
+    
+    <style>
+        /* --- CORE VARIABLES --- */
+        :root {
+            --bg-color: #000000;
+            --text-white: #FFFFFF;
+            --text-dim: #999999;
+            --border-dim: #333333;
+            --nav-height: 64px;
+            --font-main: "Helvetica Neue", Helvetica, Arial, -apple-system, sans-serif;
+            --font-mono: "SF Mono", "Monaco", "Consolas", monospace;
+            --ease-bezier: cubic-bezier(0.19, 1, 0.22, 1); /* "Elite" smooth easing */
+        }
+
+        /* --- RESET --- */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            background-color: var(--bg-color);
+            color: var(--text-white);
+            font-family: var(--font-main);
+            overflow-x: hidden;
+            height: 100%;
+            -webkit-font-smoothing: antialiased;
+            scroll-behavior: smooth;
+        }
+        
+        /* Global Subtle Grain Overlay */
+        body::after {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.05;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        a { text-decoration: none; color: inherit; cursor: pointer; }
+        ul { list-style: none; }
+        button { background: none; border: none; font: inherit; color: inherit; cursor: pointer; padding: 0; }
+
+        /* --- TYPOGRAPHY UTILITIES --- */
+        .uppercase { text-transform: uppercase; letter-spacing: 0.02em; }
+        .mono { font-family: var(--font-mono); letter-spacing: -0.02em; }
+        .text-dim { color: var(--text-dim); }
+        .flex { display: flex; }
+        .grid { display: grid; }
+
+        /* --- NAVIGATION --- */
+        .nav-bar {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: var(--nav-height);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 2rem;
+            z-index: 2000;
+            background: transparent;
+            transition: color 0.4s var(--ease-bezier), background 0.4s var(--ease-bezier), border-color 0.4s ease;
+            color: #fff; /* Default dark mode text */
+        }
+
+        /* Nav State: When over white background */
+        .nav-bar.nav-light {
+            color: #000;
+        }
+        
+        /* Nav State: Menu Open */
+        .nav-bar.menu-open {
+            background: #000 !important;
+            color: #fff !important;
+            border-bottom: 1px solid var(--border-dim);
+        }
+
+        .nav-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-box {
+            border: 1px solid currentColor;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            transition: border-color 0.4s ease;
+        }
+
+        .nav-brand {
+            font-weight: 700;
+            font-size: 1rem;
+            letter-spacing: 0.05em;
+        }
+
+        .nav-right {
+            display: flex;
+            gap: 2.5rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .nav-link {
+            opacity: 0.9;
+            transition: opacity 0.2s;
+        }
+        .nav-link:hover { opacity: 0.6; }
+
+        /* --- DROPDOWN OVERLAYS (SHARED) --- */
+        .dropdown-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%;
+            height: 60vh;
+            background: #000;
+            z-index: 1500;
+            padding-top: var(--nav-height);
+            transform: translateY(-100%);
+            transition: transform 0.6s var(--ease-bezier);
+            border-bottom: 1px solid var(--border-dim);
+            display: flex;
+            flex-direction: column;
+            pointer-events: none;
+        }
+
+        .dropdown-overlay.active {
+            transform: translateY(0);
+            pointer-events: auto;
+        }
+
+        .dropdown-content {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 4rem 2rem;
+        }
+
+        .drop-col-left {
+            padding-right: 4rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .drop-headline {
+            font-size: 1rem;
+            font-weight: 400;
+            margin-bottom: 1.5rem;
+            display: block;
+            color: #fff;
+        }
+
+        .drop-desc {
+            font-size: 1.5rem;
+            line-height: 1.25;
+            color: var(--text-dim);
+            max-width: 90%;
+            margin-bottom: auto;
+        }
+
+        .drop-footer {
+            margin-top: 4rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .footer-group h4 { margin-bottom: 0.5rem; color: #fff; font-weight: 600; }
+        .footer-group p, .footer-group a { color: var(--text-dim); display: block; margin-top: 0.25rem; }
+        
+        .social-icons { display: flex; gap: 1rem; }
+        .social-box { 
+            border: 1px solid var(--border-dim); 
+            width: 24px; height: 24px; 
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; color: #fff;
+            transition: border-color 0.2s, color 0.2s;
+        }
+        .social-box:hover { border-color: #fff; }
+
+        .drop-col-right {
+            border-left: 1px solid var(--border-dim);
+            padding-left: 4rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+
+        .menu-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .menu-item {
+            font-size: 1.5rem;
+            font-weight: 400;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #fff;
+            transition: color 0.2s;
+        }
+        .menu-item:hover { color: var(--text-dim); }
+        .plus-marker { color: var(--text-dim); font-family: var(--font-mono); }
+
+        /* --- SEARCH OVERLAY --- */
+        .search-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            backdrop-filter: blur(10px);
+            z-index: 2500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .search-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .search-container {
+            width: 100%;
+            max-width: 800px;
+            padding: 2rem;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid var(--border-dim);
+            color: var(--text-white);
+            font-size: clamp(1.5rem, 4vw, 2.5rem);
+            font-family: var(--font-mono);
+            padding: 1rem 0;
+            outline: none;
+            text-transform: uppercase;
+            border-radius: 0;
+        }
+
+        .search-input::placeholder { color: #333; }
+        .search-input:focus { border-bottom-color: var(--text-white); }
+
+        .search-hint {
+            position: absolute;
+            bottom: -2rem;
+            left: 2rem;
+            color: var(--text-dim);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            opacity: 0;
+            transition: opacity 0.3s 0.1s;
+        }
+
+        .search-overlay.active .search-hint { opacity: 0.6; }
+
+        .close-search-btn {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            color: var(--text-dim);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            cursor: pointer;
+            padding: 1rem;
+        }
+        .close-search-btn:hover { color: #fff; }
+
+        /* --- HERO SECTION --- */
+        .hero {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 10;
+        }
+
+        /* --- VIDEO BACKGROUND --- */
+        .video-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .video-bg iframe {
+            pointer-events: none; /* Ensure it doesn't capture clicks */
+        }
+
+        .video-bg::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.35);
+        }
+        
+        .hero-container {
+            max-width: 1100px;
+            padding: 0 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            transform: translateY(-20px);
+            z-index: 10;
+        }
+
+        .copyright-header {
+            font-size: 0.9rem;
+            letter-spacing: 0.05em;
+            margin-bottom: 1rem;
+            font-weight: 500;
+        }
+
+        .main-headline {
+            font-family: var(--font-main);
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+            line-height: 0.9;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            text-transform: uppercase;
+        }
+
+        .sub-triad {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            letter-spacing: 0.15em;
+            color: var(--text-dim);
+            margin-top: 1rem;
+        }
+
+        .hero-footer {
+            margin-top: 4rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+        }
+
+        .arrow-link {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: gap 0.2s;
+        }
+        .arrow-link:hover { gap: 0.8rem; }
+
+        .hero-explore-btn {
+            margin-top: 3rem;
+            padding: 1rem 2.5rem;
+            border: 1px solid rgba(255,255,255,0.3);
+            background: transparent;
+            color: #fff;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            letter-spacing: 0.15em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            border-radius: 0;
+        }
+        .hero-explore-btn:hover {
+            background: #fff;
+            color: #000;
+            border-color: #fff;
+        }
+
+        /* --- SHARED LIGHT MODE SECTION STYLES --- */
+        .light-mode-section {
+            position: relative;
+            width: 100%;
+            background-color: #FFFFFF;
+            z-index: 15;
+            overflow: hidden;
+        }
+
+        /* --- SCREEN 2: 2-COLUMN UNIFIED (SHARP/FUTURISTIC) --- */
+        .screen-2 {
+            display: flex;
+            flex-direction: column;
+            padding: 8rem 2rem 5rem 2rem;
+            background: #F8F9FB; /* Very soft, cool foundation */
+            position: relative; 
+        }
+
+        /* Transition Separator */
+        .s2-tech-separator {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 1px;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 20; padding: 0; transform: translateY(-50%);
+        }
+
+        .tech-line {
+            width: 100%; height: 1px; background: rgba(0,0,0,0.08);
+            position: relative; overflow: hidden;
+        }
+
+        .tech-line::after {
+            content: ''; position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%; background: #111;
+            transform: scaleX(0); transform-origin: center;
+            transition: transform 1.5s var(--ease-bezier);
+        }
+
+        .screen-2.in-view .tech-line::after {
+            transform: scaleX(1);
+        }
+
+        /* Ambient Living Mesh Background */
+        .s2-ambient-mesh {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        
+        .s2-ambient-mesh .mesh-blob {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.8;
+            mix-blend-mode: multiply; /* Deep ink-like hue */
+        }
+
+        .s2-ambient-mesh .blob-1 {
+            top: -20%; left: -10%; width: 70vw; height: 70vw; 
+            background: rgba(0, 240, 255, 0.12); /* Electric Cyan */
+            animation: blob-float 25s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .s2-ambient-mesh .blob-2 {
+            bottom: -20%; right: -10%; width: 60vw; height: 60vw; 
+            background: rgba(112, 0, 255, 0.08); /* Deep Purple */
+            animation: blob-float 20s infinite alternate-reverse cubic-bezier(0.4, 0, 0.2, 1);
+            animation-delay: -5s;
+        }
+
+        .s2-ambient-mesh .blob-3 {
+            top: 30%; left: 30%; width: 50vw; height: 50vw; 
+            background: rgba(0, 68, 255, 0.08); /* Deep Blue */
+            animation: blob-float 30s infinite alternate cubic-bezier(0.4, 0, 0.2, 1);
+            animation-delay: -10s;
+        }
+
+        @keyframes blob-float {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(5%, 10%) scale(1.15); }
+        }
+
+        /* Precision Blueprint Dot Grid */
+        .s2-bg-grid {
+            position: absolute;
+            inset: 0;
+            background-image: radial-gradient(rgba(0,0,0,0.06) 1px, transparent 1px);
+            background-size: 32px 32px;
+            pointer-events: none;
+            z-index: 1;
+            mask-image: radial-gradient(ellipse at 50% 50%, black 20%, transparent 90%);
+            -webkit-mask-image: radial-gradient(ellipse at 50% 50%, black 20%, transparent 90%);
+        }
+
+        .s2-container {
+            max-width: 1360px;
+            width: 100%;
+            margin: 0 auto;
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* The Structural Grid (Sharp Bento) */
+        .s2-bento-grid {
+            display: grid;
+            grid-template-columns: 1.05fr 0.95fr; /* Left side slightly larger */
+            background: rgba(255, 255, 255, 0.4); 
+            backdrop-filter: blur(60px);
+            -webkit-backdrop-filter: blur(60px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            border-radius: 0; /* Zero Radius (Sharp) */
+            box-shadow: 
+                0 20px 40px rgba(0, 0, 0, 0.08), 
+                inset 0 0 0 1px rgba(255, 255, 255, 0.9); 
+            opacity: 0;
+            transform: translateY(40px);
+            transition: all 1.2s var(--ease-bezier);
+            overflow: hidden; 
+        }
+
+        .screen-2.in-view .s2-bento-grid {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .s2-bento-cell {
+            padding: 4.5rem;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            background: transparent;
+        }
+
+        /* Cell Styling for unified vertical columns */
+        .s2-cell-left {
+            border-right: 1px solid rgba(0,0,0,0.06);
+            background: linear-gradient(135deg, rgba(255,255,255,0.7), rgba(255,255,255,0.2));
+            justify-content: flex-start;
+        }
+
+        .s2-cell-right {
+            background: linear-gradient(135deg, rgba(252,252,252,0.6), rgba(245,245,245,0.1));
+            justify-content: space-between;
+        }
+
+        /* Content Blocks & Divider */
+        .s2-content-block {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .s2-divider {
+            width: 100%;
+            height: 1px;
+            background: rgba(0,0,0,0.08);
+            margin: 3.5rem 0;
+        }
+
+        /* --- Typography within Bento --- */
+        .s2-mission-title {
+            font-family: var(--font-main);
+            font-size: clamp(3rem, 5vw, 4.5rem); 
+            line-height: 0.95;
+            letter-spacing: -0.04em;
+            color: #111;
+            margin-bottom: 1.5rem;
+            font-weight: 600; /* Increased weight */
+        }
+
+        .s2-paragraph {
+            font-size: 1.15rem;
+            color: #444;
+            line-height: 1.6;
+            font-weight: 400;
+            max-width: 600px;
+            margin-bottom: 0;
+        }
+
+        .s2-eyebrow {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: #777;
+            letter-spacing: 0.1em;
+            margin-bottom: 1.5rem;
+            display: block;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .s2-htw-spacer {
+            margin-top: 5rem;
+        }
+
+        /* High-End Tech Button */
+        .s2-btn-container {
+            margin-top: 2.5rem; 
+            display: flex;
+        }
+
+        .s2-btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 1.75rem;
+            background: linear-gradient(180deg, #ffffff 0%, #f4f4f4 100%);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 0; /* Zero Radius (Sharp) */
+            color: #111;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,1);
+            align-self: flex-start;
+        }
+
+        .s2-btn-primary:hover {
+            border-color: #00F0FF;
+            color: #0044FF;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 240, 255, 0.2), inset 0 1px 0 rgba(255,255,255,1);
+        }
+
+        .s2-btn-primary:active {
+            transform: translateY(1px);
+        }
+
+        .arrow-icon {
+            font-size: 1rem;
+            line-height: 1;
+            transition: transform 0.3s ease;
+        }
+
+        .s2-btn-primary:hover .arrow-icon {
+            transform: translate(2px, -2px);
+        }
+
+        /* --- Loop Diagram (Right Top) --- */
+        .schematic-wrapper {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .schematic-container {
+            width: 100%;
+            max-width: 420px;
+            aspect-ratio: 1/1;
+            position: relative;
+            transition: transform 0.1s ease-out;
+            will-change: transform;
+        }
+
+        .schematic-svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+        }
+
+        .sch-path-base {
+            fill: none;
+            stroke: rgba(0,0,0,0.05);
+            stroke-width: 1px;
+        }
+
+        /* Glowing Data Track */
+        .sch-path-data {
+            fill: none;
+            stroke: rgba(0, 100, 255, 0.2);
+            stroke-width: 1.5px;
+            stroke-dasharray: 2 14;
+            animation: data-spin 40s linear infinite;
+            transform-origin: 250px 250px;
+        }
+
+        @keyframes data-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Gradient Stroke for Active Pulse */
+        .sch-path-active {
+            fill: none;
+            stroke: url(#neonGradient);
+            stroke-width: 2px;
+            stroke-dasharray: 60 1130; 
+            stroke-dashoffset: 1190; 
+            stroke-linecap: round;
+            opacity: 0;
+            filter: drop-shadow(0 0 6px rgba(0, 240, 255, 0.6));
+        }
+
+        .screen-2.in-view .sch-path-active {
+            opacity: 1;
+            animation: loop-flow 6s linear infinite; 
+        }
+
+        @keyframes loop-flow {
+            0% { stroke-dashoffset: 1190; }
+            100% { stroke-dashoffset: 0; }
+        }
+
+        /* Nodes - Glassy & Technical */
+        .sch-node-shape {
+            fill: rgba(255, 255, 255, 0.9); 
+            stroke: rgba(0,0,0,0.15);
+            stroke-width: 1px;
+            transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+        
+        /* Subtle breathe effect */
+        .node-breathe .sch-node-shape {
+            animation: node-pulse 8s ease-in-out infinite;
+        }
+        
+        #node-observe .sch-node-shape { animation-delay: 0s; }
+        #node-state .sch-node-shape { animation-delay: 1.6s; }
+        #node-compiler .sch-node-shape { animation-delay: 3.2s; }
+        #node-simulate .sch-node-shape { animation-delay: 4.8s; }
+        #node-execute .sch-node-shape { animation-delay: 6.4s; }
+
+        @keyframes node-pulse {
+            0%, 100% { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.02)); stroke: rgba(0,0,0,0.1); }
+            50% { filter: drop-shadow(0 6px 16px rgba(0, 100, 255, 0.08)); stroke: rgba(0, 100, 255, 0.2); transform: translateY(-1px); }
+        }
+
+        .sch-text {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            fill: #222;
+            text-anchor: middle;
+            dominant-baseline: middle;
+            letter-spacing: 0.05em;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .center-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            fill: #000;
+            text-anchor: middle;
+            letter-spacing: 0.15em;
+            font-weight: 700;
+        }
+        
+        .center-label-sub {
+            font-family: var(--font-mono);
+            font-size: 8px;
+            fill: #888;
+            text-anchor: middle;
+            opacity: 0.8;
+        }
+
+        /* --- Engineered Definitions (Chips) --- */
+        .s2-defs-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            gap: 0.75rem; 
+        }
+
+        .s2-def-row {
+            display: grid;
+            grid-template-columns: 100px 1fr; 
+            gap: 1rem;
+            padding: 1.5rem;
+            background: rgba(255, 255, 255, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            border-radius: 0; /* Zero Radius (Sharp) */
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.19, 1, 0.22, 1);
+            cursor: default; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+            position: relative;
+            overflow: hidden;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        .s2-def-label {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #111;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        /* Tech Dot Marker */
+        .s2-def-label::before {
+            content: '';
+            display: block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #CCC;
+        }
+
+        .s2-def-desc {
+            font-size: 1.05rem;
+            color: #444;
+            line-height: 1.5;
+            margin: 0;
+            font-weight: 400;
+        }
+
+        /* Footer Strip */
+        .s2-microline-bottom {
+            margin-top: 4rem;
+            text-align: center;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: #888;
+            letter-spacing: 0.15em;
+            word-spacing: 0.5rem;
+            width: 100%;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 1s var(--ease-bezier) 0.5s, transform 1s var(--ease-bezier) 0.5s;
+        }
+
+        .screen-2.in-view .s2-microline-bottom {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .node-breathe .sch-node-shape { animation: none; }
+            .sch-path-active { animation: none; stroke-dashoffset: 0; }
+            .sch-path-data { animation: none; display: none; }
+        }
+
+        /* --- SCREEN 3: MISSION (DEEP CHARCOAL) --- */
+        .screen-3 {
+            min-height: 76.5vh; /* 15% less than 90vh */
+            padding: 6.8rem 2rem; /* 15% less padding */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background-color: #111111; /* Darken Section */
+            border-top: 1px solid #222;
+            border-bottom: 1px solid #222;
+        }
+
+        .s3-content-wrapper {
+            max-width: 1400px;
+            width: 100%;
+            margin: 0 auto;
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 1.2s var(--ease-bezier), transform 1.2s var(--ease-bezier);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .s3-content-wrapper.in-view {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .s3-headline {
+            font-family: var(--font-main);
+            font-size: clamp(2.5rem, 5vw, 5rem);
+            line-height: 1.05;
+            font-weight: 600; /* Increased */
+            color: #FFFFFF; /* High contrast for dark mode */
+            letter-spacing: -0.03em;
+            max-width: 1300px;
+        }
+
+        .s3-highlight {
+            color: #888888; /* Subtle gray contrast */
+            font-weight: 400;
+        }
+
+        /* --- SCREEN 4: APPLIED SYSTEMS (TABLE LAYOUT + GLASSMORPHISM) --- */
+        .screen-4 {
+            position: relative;
+            padding: 8rem 2rem;
+            color: #111;
+            background: #F8F9FB; /* Light sophisticated base */
+            border-bottom: 1px solid #E5E5E5;
+            overflow: hidden;
+        }
+
+        /* Dynamic Slate Ambient Background */
+        .s4-ambient-bg {
+            position: absolute;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .siri-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.6;
+            animation: float-orb 15s ease-in-out infinite alternate;
+        }
+
+        .orb-1 { width: 600px; height: 600px; background: #CBD5E1; top: -10%; left: -10%; } /* Slate 300 */
+        .orb-2 { width: 500px; height: 500px; background: #E2E8F0; bottom: 10%; right: -5%; animation-delay: -5s; } /* Slate 200 */
+        .orb-3 { width: 700px; height: 700px; background: #94A3B8; top: 40%; left: 30%; animation-delay: -10s; } /* Slate 400 */
+
+        @keyframes float-orb {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(50px, 50px) scale(1.1); }
+        }
+
+        .s4-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1.1fr;
+            gap: 6rem;
+            align-items: start;
+            position: relative;
+            z-index: 2;
+        }
+
+        .s4-sys-header {
+            margin-bottom: 4rem;
+        }
+
+        .s4-title {
+            font-family: var(--font-main);
+            font-size: 2.75rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: #111;
+            margin-bottom: 1.5rem;
+            line-height: 1;
+        }
+
+        .s4-lead {
+            font-family: var(--font-main);
+            font-size: 1.1rem;
+            color: rgba(17, 17, 17, 0.7);
+            line-height: 1.6;
+            max-width: 90%;
+        }
+
+        .s4-registry {
+            border-top: 2px solid #111;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .s4-reg-row {
+            display: flex;
+            align-items: flex-start;
+            padding: 2.5rem 0;
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            gap: 2rem;
+            position: relative;
+        }
+
+        /* Glassmorphic Hover Highlight for Rows */
+        .s4-reg-row::before {
+            content: '';
+            position: absolute;
+            inset: -1rem -1.5rem;
+            border-radius: 20px;
+            background: transparent;
+            transition: all 0.4s var(--ease-bezier);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .s4-reg-row:hover::before {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.03), inset 0 1px 1px rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+
+        /* Hide bottom border on hover for clean look */
+        .s4-reg-row:hover {
+            border-bottom-color: transparent;
+        }
+
+        .s4-reg-meta {
+            width: 60px;
+            flex-shrink: 0;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #111;
+            line-height: 1.5;
+            letter-spacing: 0.05em;
+        }
+
+        .s4-reg-meta span {
+            color: rgba(17, 17, 17, 0.5);
+            font-weight: 400;
+        }
+
+        .s4-reg-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .s4-reg-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .s4-reg-name {
+            font-family: var(--font-main);
+            font-size: 1.35rem;
+            font-weight: 500;
+            color: #111;
+            margin: 0;
+            line-height: 1;
+            letter-spacing: -0.01em;
+        }
+        
+        .s4-reg-name-large {
+            font-size: 1.6rem;
+            font-weight: 600;
+        }
+
+        .s4-reg-status {
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            color: #111;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-box {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+        .status-box.active { background-color: #111; box-shadow: 0 0 8px rgba(17,17,17,0.4); }
+        .status-box.restricted { background-color: transparent; border: 1px solid #111; }
+        .status-box.dev { background-color: #A0A0A0; }
+
+        .s4-reg-desc {
+            font-size: 1.05rem;
+            line-height: 1.6;
+            color: rgba(17, 17, 17, 0.75);
+            max-width: 95%;
+            margin-top: 1.25rem;
+            margin-bottom: 0;
+        }
+
+        /* Glassmorphic Pill Button */
+        .s4-open-btn {
+            margin-top: 1.5rem;
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.9);
+            padding: 0.65rem 1.5rem;
+            border-radius: 40px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #111;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+            align-self: flex-start;
+            position: relative;
+            z-index: 2;
+        }
+
+        .s4-open-btn:hover {
+            background: #FFFFFF;
+            transform: scale(1.02);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+        }
+
+        .btn-arrow {
+            transition: transform 0.3s ease;
+        }
+
+        .s4-open-btn:hover .btn-arrow {
+            transform: translate(2px, -2px);
+        }
+
+        /* Right side: Glass Interface Bezel */
+        .s4-visual-col {
+            position: sticky;
+            top: 8rem;
+        }
+
+        .s4-interface-frame {
+            position: relative;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 4/3;
+            border-radius: 24px;
+            border: 1px solid rgba(255,255,255,0.7);
+            background: rgba(255,255,255,0.25);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            overflow: hidden;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.06), inset 0 1px 1px rgba(255,255,255,1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Glass Top Band */
+        .s4-frame-top {
+            background: rgba(255, 255, 255, 0.5);
+            color: #111;
+            padding: 1rem 1.5rem;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            letter-spacing: 0.1em;
+            font-weight: 700;
+            z-index: 10;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            border-bottom: 1px solid rgba(255,255,255,0.6);
+        }
+
+        .s4-frame-top::before, .s4-frame-top::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px; height: 4px;
+            background: #555;
+            border-radius: 50%;
+            box-shadow: 0 0 6px rgba(17,17,17,0.15);
+        }
+        .s4-frame-top::before { left: 1.5rem; }
+        .s4-frame-top::after { right: 1.5rem; }
+
+        /* The Image Wrapper */
+        .s4-image-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+        }
+
+        .s4-interface-frame img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: left top;
+            display: block;
+            transform: scale(1);
+            transition: transform 0.8s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+
+        .s4-interface-frame:hover img {
+            transform: scale(1.04);
+        }
+
+        /* Glass Bottom Action Band */
+        .s4-frame-bottom {
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            color: #111;
+            padding: 1.25rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            border-top: 1px solid rgba(255,255,255,0.6);
+            cursor: pointer;
+            transition: background 0.3s ease;
+            z-index: 10;
+        }
+
+        .s4-frame-bottom:hover {
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .arrow-up-right {
+            font-size: 1.2rem;
+            line-height: 1;
+            transition: transform 0.3s ease;
+        }
+
+        .s4-frame-bottom:hover .arrow-up-right {
+            transform: translate(3px, -3px);
+        }
+        
+        @media (max-width: 900px) {
+            .s4-container { grid-template-columns: 1fr; gap: 4rem; }
+            .s4-reg-row { gap: 1.5rem; padding: 2rem 0; }
+            .s4-visual-col { position: relative; top: 0; }
+        }
+
+        /* --- FOOTER SECTION --- */
+        .footer {
+            position: relative;
+            width: 100%;
+            background-color: #000;
+            border-top: 1px solid var(--border-dim);
+            z-index: 20; 
+            padding: 5rem 2rem 3rem 2rem;
+            color: #fff; /* Reset to dark mode for footer */
+        }
+
+        .footer-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 4rem;
+        }
+
+        .footer-top {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .footer-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .logo-box-small {
+            border: 1px solid white;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 11px;
+        }
+
+        .footer-desc {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            line-height: 1.5;
+            max-width: 300px;
+        }
+
+        .footer-heading {
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+            color: #fff;
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+        }
+
+        .footer-links {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .footer-links li a {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            transition: color 0.2s ease;
+        }
+
+        .footer-links li a:hover {
+            color: #fff;
+        }
+
+        .footer-social {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+
+        .footer-bottom {
+            border-top: 1px solid var(--border-dim);
+            padding-top: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1.5rem;
+        }
+
+        .copyright {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+
+        .legal-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .legal-links a {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            transition: color 0.2s;
+        }
+        .legal-links a:hover { color: #fff; }
+
+        /* --- MOBILE --- */
+        @media (max-width: 900px) {
+            .nav-links-group { display: none; }
+            .nav-right { gap: 1rem; }
+            
+            .dropdown-content { grid-template-columns: 1fr; gap: 2rem; padding: 2rem; }
+            .drop-col-right { border-left: none; padding-left: 0; border-top: 1px solid var(--border-dim); padding-top: 2rem; }
+            .drop-col-left { padding-right: 0; }
+            
+            .main-headline { font-size: 2.5rem; }
+            .search-input { font-size: 1.5rem; }
+
+            /* S2 Mobile Update */
+            .s2-bento-grid { grid-template-columns: 1fr; }
+            .s2-bento-cell { padding: 3rem 2rem; }
+            .s2-cell-left { border-right: none; border-bottom: 1px solid rgba(0,0,0,0.06); }
+            .s2-mission-title { font-size: 2.5rem; }
+            .s2-def-row { grid-template-columns: 1fr; gap: 0.5rem; }
+            
+            .footer-top {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+            }
+            .footer-bottom {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+            .legal-links {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+            
+            .s3-headline { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- VIDEO BACKGROUND LAYER (Fixed) -->
+    <div class="video-bg">
+        <!-- Replace the video with the Vimeo iframe -->
+        <iframe src="https://player.vimeo.com/video/1166998562?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479&amp;autoplay=1&amp;muted=1&amp;loop=1" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share" referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="aiva-hero-loop"></iframe>
+    </div>
+
+    <!-- NAVIGATION -->
+    <nav class="nav-bar" id="navbar">
+        <div class="nav-left uppercase">
+            <div class="logo-box">T</div>
+            <a href="#" class="nav-brand">Tensor</a>
+        </div>
+        
+        <div class="nav-right uppercase">
+            <div class="nav-links-group flex" style="gap: 2.5rem;">
+                <a href="#" class="nav-link">Aiva OS</a>
+                <button class="nav-link uppercase" id="researchToggle">Research +</button>
+                <button class="nav-link uppercase" id="searchToggle">Search</button>
+            </div>
+            <button class="nav-link uppercase" id="companyToggle">Company +</button>
+        </div>
+    </nav>
+
+    <!-- SEARCH OVERLAY -->
+    <div class="search-overlay" id="searchOverlay">
+        <button class="close-search-btn uppercase" id="searchCloseBtn">Close [ESC]</button>
+        <div class="search-container">
+            <input type="text" class="search-input" id="searchInput" placeholder="Search Tensor..." spellcheck="false">
+            <div class="search-hint uppercase">Press Enter to search</div>
+        </div>
+    </div>
+
+    <!-- COMPANY DROPDOWN OVERLAY -->
+    <div class="dropdown-overlay" id="companyDropdown">
+        <div class="dropdown-content">
+            <div class="drop-col-left">
+                <div>
+                    <span class="drop-headline uppercase">Tensor Systems</span>
+                    <p class="drop-desc">
+                        Tensor is a systems engineering company developing deterministic computational control for complex, safety-critical systems.
+                    </p>
+                </div>
+                
+                <div class="drop-footer">
+                    <div class="footer-group">
+                        <h4>Contact</h4>
+                        <a href="mailto:contact@tensor.systems" class="mono">contact@tensor.systems</a>
+                    </div>
+                    <div class="footer-group">
+                        <h4>Social</h4>
+                        <div class="social-icons">
+                            <a href="#" class="social-box">X</a>
+                            <a href="#" class="social-box">L</a>
+                            <a href="#" class="social-box">F</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="drop-col-right">
+                <ul class="menu-list uppercase">
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Company</a></li>
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Newsroom</a></li>
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Leadership</a></li>
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Careers</a></li>
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Open Roles</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- RESEARCH DROPDOWN OVERLAY -->
+    <div class="dropdown-overlay" id="researchDropdown">
+        <div class="dropdown-content">
+            <div class="drop-col-left">
+                <div>
+                    <span class="drop-headline uppercase">Research</span>
+                    <p class="drop-desc">
+                        Tensor advances deterministic computational control through formal state modeling, constrained simulation, and closed-loop execution systems.
+                    </p>
+                    <p class="drop-desc" style="font-size: 0.9rem; margin-top: 1.5rem; opacity: 0.7;">
+                        Foundational work across safety-critical domains.
+                    </p>
+                </div>
+            </div>
+
+            <div class="drop-col-right">
+                <ul class="menu-list uppercase">
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Foundations</a></li>
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Technical Notes</a></li>
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Publications</a></li>
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Applied Research</a></li>
+                    <li><a href="#" class="menu-item"><span class="plus-marker">+</span> Collaborate</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- HERO CONTENT -->
+    <main class="hero">
+        <div class="hero-container">
+            <div class="copyright-header uppercase">
+                &copy; Tensor Systems
+            </div>
+
+            <h1 class="main-headline">
+                Engineering Deterministic<br>
+                Control for Complex<br>
+                Safety Critical Systems
+            </h1>
+
+            <div class="sub-triad uppercase">
+                State &nbsp;&bull;&nbsp; Simulate &nbsp;&bull;&nbsp; Control
+            </div>
+
+            <!-- Explore Button -->
+            <button class="hero-explore-btn" onclick="document.getElementById('screen2').scrollIntoView({behavior: 'smooth'})">
+                Explore
+            </button>
+
+            <div class="hero-footer uppercase">
+                <a href="#" class="arrow-link">
+                    Est. 2026 &nbsp;&rarr;
+                </a>
+                <span style="opacity: 0.5; margin-left: 1rem;">Future</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- WRAPPER FOR LIGHT SECTIONS (S2 & S4) -->
+    <div class="light-mode-wrapper">
+        
+        <!-- SCREEN 2: 2-COLUMN UNIFIED (SHARP/FUTURISTIC) -->
+        <section class="screen-2 light-mode-section" id="screen2">
+            <!-- TECHNICAL SEPARATOR -->
+            <div class="s2-tech-separator">
+                <div class="tech-line"></div>
+            </div>
+            
+            <!-- Ambient Living Mesh Background -->
+            <div class="s2-ambient-mesh">
+                <div class="mesh-blob blob-1"></div>
+                <div class="mesh-blob blob-2"></div>
+                <div class="mesh-blob blob-3"></div>
+            </div>
+            
+            <div class="s2-bg-grid"></div>
+            
+            <div class="s2-container">
+                
+                <div class="s2-bento-grid">
+                    
+                    <!-- LEFT COLUMN: Content Flow -->
+                    <div class="s2-bento-cell s2-cell-left delay-1">
+                        
+                        <div class="s2-content-block">
+                            <h2 class="s2-mission-title">Mission Autonomy</h2>
+                            <p class="s2-paragraph">
+                                Without determinism, autonomy is just intent. In complex safety-critical systems, heuristics collapse under scale, probabilistic outputs can’t be trusted under scrutiny, and operators can’t replay what happened when things go wrong. Simulation-grade, deterministic control makes autonomy real: actions are tested before execution, constraints are enforced, and every run is reproducible. That is how you move from plans to reliable operation.
+                            </p>
+                        </div>
+
+                        <div class="s2-btn-container">
+                            <a href="#" class="s2-btn-primary">
+                                <span>Learn More</span>
+                                <span class="arrow-icon">↗</span>
+                            </a>
+                        </div>
+                        
+                        <div class="s2-htw-spacer"></div>
+
+                        <div class="s2-content-block">
+                            <span class="s2-eyebrow">How Tensor Works</span>
+                            <p class="s2-paragraph">
+                                Tensor builds deterministic computational control for complex safety-critical systems. <strong>In plain terms: we make systems behave predictably, test decisions in simulation, and then execute only what’s safe.</strong> We model governed state, compile constraints into runtime logic, simulate admissible trajectories before execution, and emit reproducible control outputs with full provenance. Same inputs, same outputs.
+                            </p>
+                        </div>
+                        
+                    </div>
+
+                    <!-- RIGHT COLUMN: Visuals & Concepts -->
+                    <div class="s2-bento-cell s2-cell-right delay-2">
+                        
+                        <!-- Control Visual -->
+                        <div id="s2-diagram-container">
+                            <div class="schematic-wrapper">
+                                <div class="schematic-container">
+                                    <svg class="schematic-svg" viewBox="0 0 500 500">
+                                        <defs>
+                                            <linearGradient id="neonGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                <stop offset="0%" stop-color="#00F0FF" />
+                                                <stop offset="50%" stop-color="#0044FF" />
+                                                <stop offset="100%" stop-color="#7000FF" />
+                                            </linearGradient>
+                                        </defs>
+
+                                        <!-- PATHS GROUP -->
+                                        <g transform="translate(0,0)">
+                                            <!-- Perfect Circular Path -->
+                                            <circle cx="250" cy="250" r="180" class="sch-path-base" />
+                                            <!-- Data Flow Track (Dashed Spinner) -->
+                                            <circle cx="250" cy="250" r="180" class="sch-path-data" />
+                                            <!-- Active Overlay Stroke -->
+                                            <circle cx="250" cy="250" r="180" class="sch-path-active" />
+                                        </g>
+
+                                        <!-- NODES (High Contrast Technical Style) -->
+                                        <g id="node-observe" class="sch-group node-breathe"><polygon points="190,50 310,50 310,90 190,90" class="sch-node-shape" /><text x="250" y="70" class="sch-text uppercase">Observe</text></g>
+                                        <g id="node-state" class="sch-group node-breathe"><polygon points="361,174 481,174 481,214 361,214" class="sch-node-shape" /><text x="421" y="194" class="sch-text uppercase">State Est.</text></g>
+                                        <g id="node-compiler" class="sch-group node-breathe"><polygon points="295,375 415,375 415,415 295,415" class="sch-node-shape" /><text x="355" y="395" class="sch-text uppercase">Compiler</text></g>
+                                        <g id="node-simulate" class="sch-group node-breathe"><polygon points="85,375 205,375 205,415 85,415" class="sch-node-shape" /><text x="145" y="395" class="sch-text uppercase">Simulate</text></g>
+                                        <g id="node-execute" class="sch-group node-breathe"><polygon points="19,174 139,174 139,214 19,214" class="sch-node-shape" /><text x="79" y="194" class="sch-text uppercase">Execute</text></g>
+
+                                        <!-- CENTER CORE -->
+                                        <g transform="translate(250, 250)">
+                                            <text y="-5" class="center-label uppercase">Deterministic</text>
+                                            <text y="10" class="center-label uppercase">Replay</text>
+                                            <text y="25" class="center-label-sub">SYS.READY</text>
+                                        </g>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="s2-divider"></div>
+
+                        <!-- Engineered Concepts -->
+                        <div class="s2-defs-container">
+                            <div class="s2-def-row" data-target="node-state">
+                                <span class="s2-def-label">STATE</span>
+                                <p class="s2-def-desc">Governed state representation from fragmented observations.</p>
+                            </div>
+                            <div class="s2-def-row" data-target="node-simulate">
+                                <span class="s2-def-label">SIMULATE</span>
+                                <p class="s2-def-desc">Constrained simulation over admissible action trajectories.</p>
+                            </div>
+                            <div class="s2-def-row" data-target="node-execute">
+                                <span class="s2-def-label">CONTROL</span>
+                                <p class="s2-def-desc">Reproducible outputs that can be executed, replayed, and audited.</p>
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+                <!-- Footer Strip -->
+                <div class="s2-microline-bottom uppercase">
+                    REPLAYABLE &middot; AUDITABLE &middot; CONSTRAINT-SAFE &middot; VERSIONED
+                </div>
+            </div>
+        </section>
+
+    </div><!-- End Light Mode Wrapper -->
+
+    <!-- SCREEN 3: MISSION (DEEP CHARCOAL) -->
+    <section class="screen-3" id="screen3">
+        <div class="s3-content-wrapper">
+            <h2 class="s3-headline">
+                Our software powers <span class="s3-highlight">deterministic computational control</span> for complex systems across organizations, enterprises, and industries where failure is expensive and reliability is non-negotiable.
+            </h2>
+        </div>
+    </section>
+
+    <!-- SCREEN 4: APPLIED SYSTEMS (TABLE LAYOUT + GLASSMORPHISM) -->
+    <section class="screen-4" id="screen4">
+        
+        <!-- Ambient Slate/Silver Orbs -->
+        <div class="s4-ambient-bg">
+            <div class="siri-orb orb-1"></div>
+            <div class="siri-orb orb-2"></div>
+            <div class="siri-orb orb-3"></div>
+        </div>
+
+        <div class="s4-container">
+            
+            <!-- LEFT COLUMN: Structural Data Registry -->
+            <div class="s4-content-col">
+                <div class="s4-sys-header">
+                    <h2 class="s4-title uppercase">Applied Systems</h2>
+                    <p class="s4-lead">
+                        Tensor is the control substrate. Applied systems package the Tensor stack into a domain OS with a production interface.
+                    </p>
+                </div>
+
+                <div class="s4-registry">
+                    
+                    <!-- REGISTRY ITEM: MEDICINE -->
+                    <div class="s4-reg-row">
+                        <div class="s4-reg-meta uppercase">01 /<br><span>MED</span></div>
+                        <div class="s4-reg-content">
+                            <div class="s4-reg-header">
+                                <h3 class="s4-reg-name s4-reg-name-large uppercase">AIVA OS</h3>
+                                <div class="s4-reg-status uppercase">
+                                    <div class="status-box active"></div> Active
+                                </div>
+                            </div>
+                            <p class="s4-reg-desc">
+                                Causal intelligence infrastructure for medicine. AIVA OS bridges the gap between simulation-grade medical R&D and frontline clinical execution, enabling hospitals, research, and chronic care to operate with the reliability of engineered systems.
+                            </p>
+                            <!-- Sleek Pill Button inside layout -->
+                            <a href="#" class="s4-open-btn uppercase">Open <span class="btn-arrow">↗</span></a>
+                        </div>
+                    </div>
+
+                    <!-- REGISTRY ITEM: DEFENSE -->
+                    <div class="s4-reg-row">
+                        <div class="s4-reg-meta uppercase">02 /<br><span>DEF</span></div>
+                        <div class="s4-reg-content">
+                            <div class="s4-reg-header">
+                                <h3 class="s4-reg-name uppercase">Defense</h3>
+                                <div class="s4-reg-status uppercase">
+                                    <div class="status-box restricted"></div> Restricted
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- REGISTRY ITEM: INDUSTRIAL -->
+                    <div class="s4-reg-row">
+                        <div class="s4-reg-meta uppercase">03 /<br><span>IND</span></div>
+                        <div class="s4-reg-content">
+                            <div class="s4-reg-header">
+                                <h3 class="s4-reg-name uppercase">Industrial</h3>
+                                <div class="s4-reg-status uppercase">
+                                    <div class="status-box dev"></div> In Dev
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: Interface Frame (Glassmorphic) -->
+            <div class="s4-visual-col">
+                <div class="s4-interface-frame">
+                    
+                    <!-- Center Aligned Top Band -->
+                    <div class="s4-frame-top uppercase">
+                        AI Enabled Precision Medicine
+                    </div>
+
+                    <!-- Hover Magnify Image -->
+                    <div class="s4-image-wrapper">
+                        <img src="./assets/aiva-os-interface.png" alt="AIVA OS Interface">
+                    </div>
+
+                    <!-- Bottom Action Band -->
+                    <div class="s4-frame-bottom uppercase">
+                        <span>AIVA OS SYSTEM</span>
+                        <span class="arrow-up-right">↗</span>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- FOOTER SECTION -->
+    <footer class="footer">
+        <div class="footer-container">
+            <!-- Top Row: Columns -->
+            <div class="footer-top">
+                <!-- Brand Column -->
+                <div class="footer-col brand-col">
+                    <div class="footer-brand uppercase">
+                        <div class="logo-box-small">T</div>
+                        <span>Tensor Systems</span>
+                    </div>
+                    <p class="footer-desc">Deterministic computational control for complex, safety-critical systems.</p>
+                </div>
+
+                <!-- Company Column -->
+                <div class="footer-col">
+                    <h4 class="footer-heading uppercase">Company</h4>
+                    <ul class="footer-links">
+                        <li><a href="#">Mission</a></li>
+                        <li><a href="#">Leadership</a></li>
+                        <li><a href="#">Newsroom</a></li>
+                        <li><a href="#">Institutional Partners</a></li>
+                    </ul>
+                </div>
+
+                <!-- Research Column -->
+                <div class="footer-col">
+                    <h4 class="footer-heading uppercase">Research</h4>
+                    <ul class="footer-links">
+                        <li><a href="#">Publications</a></li>
+                        <li><a href="#">Causal Architecture</a></li>
+                        <li><a href="#">Simulation Engine</a></li>
+                        <li><a href="#">Clinical Cohorts</a></li>
+                    </ul>
+                </div>
+
+                <!-- Work Column -->
+                <div class="footer-col">
+                    <h4 class="footer-heading uppercase">Work With Us</h4>
+                    <ul class="footer-links">
+                        <li><a href="#">Careers</a></li>
+                        <li><a href="#">Open Roles</a></li>
+                        <li><a href="#">Research Fellows</a></li>
+                        <li><a href="#">Clinical Collaborators</a></li>
+                    </ul>
+                </div>
+
+                <!-- Contact Column -->
+                <div class="footer-col">
+                    <h4 class="footer-heading uppercase">Contact</h4>
+                    <ul class="footer-links">
+                        <li><a href="mailto:contact@tensor.systems">contact@tensor.systems</a></li>
+                    </ul>
+                    <div class="footer-social">
+                        <a href="#" class="social-box">X</a>
+                        <a href="#" class="social-box">L</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Row: Legal -->
+            <div class="footer-bottom">
+                <div class="copyright uppercase">© 2026 Tensor Systems</div>
+                <div class="legal-links uppercase">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms</a>
+                    <a href="#">Security</a>
+                    <a href="#">Institutional Access</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // DOM Elements
+        const navbar = document.getElementById('navbar');
+        
+        // Buttons
+        const companyToggle = document.getElementById('companyToggle');
+        const researchToggle = document.getElementById('researchToggle');
+        const searchToggle = document.getElementById('searchToggle');
+        const searchCloseBtn = document.getElementById('searchCloseBtn');
+        
+        // Overlays
+        const companyDropdown = document.getElementById('companyDropdown');
+        const researchDropdown = document.getElementById('researchDropdown');
+        const searchOverlay = document.getElementById('searchOverlay');
+        const searchInput = document.getElementById('searchInput');
+
+        // State Tracking
+        let state = {
+            company: false,
+            research: false,
+            search: false
+        };
+
+        // Helper to reset all states
+        function closeAll() {
+            companyDropdown.classList.remove('active');
+            researchDropdown.classList.remove('active');
+            searchOverlay.classList.remove('active');
+            
+            companyToggle.textContent = "Company +";
+            researchToggle.textContent = "Research +";
+            
+            // Force remove menu-open background
+            navbar.classList.remove('menu-open');
+            
+            // Search Cleanup
+            if (state.search) {
+                searchInput.value = '';
+                searchInput.blur();
+            }
+            
+            state.company = false;
+            state.research = false;
+            state.search = false;
+        }
+
+        // Toggle Company
+        function toggleCompany() {
+            const wasOpen = state.company;
+            if (state.research) { 
+                researchDropdown.classList.remove('active');
+                researchToggle.textContent = "Research +";
+                state.research = false;
+            }
+            if (state.search) closeAll();
+
+            if (!wasOpen) {
+                state.company = true;
+                companyDropdown.classList.add('active');
+                navbar.classList.add('menu-open');
+                companyToggle.textContent = "Close -";
+            } else {
+                state.company = false;
+                companyDropdown.classList.remove('active');
+                navbar.classList.remove('menu-open');
+                companyToggle.textContent = "Company +";
+            }
+        }
+
+        // Toggle Research
+        function toggleResearch() {
+            const wasOpen = state.research;
+            if (state.company) { 
+                companyDropdown.classList.remove('active');
+                companyToggle.textContent = "Company +";
+                state.company = false;
+            }
+            if (state.search) closeAll();
+
+            if (!wasOpen) {
+                state.research = true;
+                researchDropdown.classList.add('active');
+                navbar.classList.add('menu-open');
+                researchToggle.textContent = "Close -";
+            } else {
+                state.research = false;
+                researchDropdown.classList.remove('active');
+                navbar.classList.remove('menu-open');
+                researchToggle.textContent = "Research +";
+            }
+        }
+
+        // Toggle Search
+        function toggleSearch() {
+            const wasOpen = state.search;
+            closeAll();
+
+            if (!wasOpen) {
+                state.search = true;
+                searchOverlay.classList.add('active');
+                setTimeout(() => searchInput.focus(), 100);
+            }
+        }
+
+        // Event Listeners
+        companyToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleCompany(); });
+        researchToggle.addEventListener('click', (e) => { e.stopPropagation(); toggleResearch(); });
+        
+        searchToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleSearch();
+        });
+        
+        searchCloseBtn.addEventListener('click', toggleSearch);
+
+        // Global Keydown (ESC)
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeAll();
+            }
+        });
+
+        // Click Outside Handler
+        document.addEventListener('click', (e) => {
+            if (navbar.contains(e.target)) return;
+            if (companyDropdown.contains(e.target)) return;
+            if (researchDropdown.contains(e.target)) return;
+            if (searchOverlay.contains(e.target) && e.target !== searchOverlay) return;
+
+            if (state.company || state.research || state.search) {
+                closeAll();
+            }
+        });
+
+        // --- ANIMATION OBSERVER & NAV COLOR SWITCHER ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Elements
+            const screen2 = document.querySelector('#screen2');
+            const screen3 = document.querySelector('#screen3');
+            const screen4 = document.querySelector('#screen4');
+            const s2Separator = document.querySelector('.s2-tech-separator'); 
+            const footer = document.querySelector('.footer');
+            
+            // Content Reveal Elements
+            const s3Wrapper = document.querySelector('.s3-content-wrapper');
+
+            // S2 Parallax Logic (Desktop)
+            const s2DiagramContainer = document.getElementById('s2-diagram-container');
+            let isS2ParallaxRunning = false;
+            let currS2X = 0, currS2Y = 0, targetS2X = 0, targetS2Y = 0;
+
+            if(window.innerWidth > 768 && s2DiagramContainer) {
+                const updateS2Parallax = () => {
+                    if (!isS2ParallaxRunning) return;
+                    currS2X += (targetS2X - currS2X) * 0.05;
+                    currS2Y += (targetS2Y - currS2Y) * 0.05;
+                    s2DiagramContainer.style.transform = `perspective(1000px) rotateX(${currS2Y}deg) rotateY(${currS2X}deg)`;
+                    requestAnimationFrame(updateS2Parallax);
+                };
+
+                screen2.addEventListener('mousemove', (e) => {
+                    if (!isS2ParallaxRunning) {
+                        isS2ParallaxRunning = true;
+                        requestAnimationFrame(updateS2Parallax);
+                    }
+                    const rect = screen2.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    targetS2X = (x - centerX) / 120;
+                    targetS2Y = (centerY - y) / 120;
+                });
+                
+                screen2.addEventListener('mouseleave', () => {
+                    isS2ParallaxRunning = false;
+                    s2DiagramContainer.style.transform = 'perspective(1000px) rotateX(0) rotateY(0)';
+                    targetS2X = 0;
+                    targetS2Y = 0;
+                });
+            }
+
+            // 1. Content Reveal Observer (Screen 2)
+            const s2Observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        screen2.classList.add('in-view');
+                        s2Separator.classList.add('in-view'); 
+                    }
+                });
+            }, { threshold: 0.15 }); 
+            s2Observer.observe(screen2);
+
+            // 2. Content Reveal Observer (Screen 3)
+            const s3Observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        s3Wrapper.classList.add('in-view');
+                    }
+                });
+            }, { threshold: 0.15 });
+            s3Observer.observe(screen3);
+            
+            // 6. Navigation Color Switcher Logic
+            // Add 'nav-light' only when inside white sections (Screen 2 & Screen 4)
+            // Remove 'nav-light' when in black sections (Hero, Screen 3, Footer)
+            
+            const navLightObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        navbar.classList.add('nav-light');
+                    }
+                });
+            }, { threshold: 0.05, rootMargin: "-64px 0px -50% 0px" });
+            
+            navLightObserver.observe(screen2);
+            navLightObserver.observe(screen4);
+
+            const navDarkObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        navbar.classList.remove('nav-light');
+                    }
+                });
+            }, { threshold: 0.05, rootMargin: "-64px 0px -50% 0px" });
+
+            navDarkObserver.observe(document.querySelector('.hero'));
+            navDarkObserver.observe(screen3); // S3 is now dark
+            navDarkObserver.observe(footer);
+        });
+    </script>
+</body>
+</html>
